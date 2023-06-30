@@ -1,0 +1,39 @@
+stages:
+  - build
+  - deploy
+
+build:
+  only:
+    - master
+    - staging
+  stage: build
+  image: node:18
+  script:
+    - yarn install
+    - yarn build
+  artifacts:
+    paths:
+      - dist/
+
+deploy:
+  only:
+    - master
+    - staging
+  stage: deploy
+  image: python:3.7
+  script:
+    - apt-get update
+    - apt-get install -y zip
+    - pip install awscli
+    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+    - aws configure set default.region $AWS_DEFAULT_REGION
+    - aws configure set default.output json
+    - echo "Zipping dist folder"
+    - cd dist && zip -r ../dist.zip * && cd ../
+    - echo "Running:- aws s3 cp dist.zip s3://$S3_BUCKET_NAME/$CI_COMMIT_SHA.zip"
+    - aws s3 cp dist.zip s3://$S3_BUCKET_NAME/$CI_COMMIT_SHA.zip
+    - echo "Running:- aws elasticbeanstalk create-application-version --application-name $EB_APP_NAME --version-label $EB_ENV_NAME --source-bundle S3Bucket=\"$S3_BUCKET_NAME\",S3Key=\"$CI_COMMIT_SHA.zip\""
+    - aws elasticbeanstalk create-application-version --application-name $EB_APP_NAME --version-label $CI_COMMIT_SHA --source-bundle S3Bucket="$S3_BUCKET_NAME",S3Key="$CI_COMMIT_SHA.zip"
+    - echo "Running:- aws elasticbeanstalk update-environment --application-name $EB_APP_NAME --environment-name $EB_ENV_NAME --version-label $CI_COMMIT_SHA"
+    - aws elasticbeanstalk update-environment --application-name $EB_APP_NAME --environment-name $EB_ENV_NAME --version-label $CI_COMMIT_SHA
